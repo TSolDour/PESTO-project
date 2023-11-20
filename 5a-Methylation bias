@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#PBS -N methyldackel_bias_M
+#PBS -q omp
+#PBS -l select=1:ncpus=10:mem=80gb
+#PBS -l walltime=10:00:00
+#PBS -J 1-12
+
+# Manage script history:
+CB_NAME=$(basename $PBS_JOBNAME)
+CB_LOG_FOLDER=$SCRATCH/"$CB_NAME"
+mkdir -p $CB_LOG_FOLDER
+
+# Set .log folder as the same as the script folder:
+cd ${PBS_O_WORKDIR}
+
+# Load methyldackel (https://github.com/dpryan79/MethylDackel) conda environment:
+. /appli/bioinfo/methyldackel/0.6.1/env.sh
+
+# Path to the indexed reference genome:
+REFERENCE=/home/datawork-lex/pesto/methylseq/3-bwameth/GCA_902806645.1_genomic.fna
+
+# Path to the aligned_sorted.bam files:
+BAM=$(ls /home1/scratch/tsoldour/SamToolsSort_Roslin_M/*_sort.bam | awk "NR==${PBS_ARRAY_INDEX}")
+
+# Path to the outpt files:
+OUT=$CB_LOG_FOLDER/$(basename ${BAM%_sort.bam})
+
+# Run Methyldackel mbias:
+MethylDackel mbias -@ ${NCPUS} ${REFERENCE} ${BAM} ${OUT} > $CB_LOG_FOLDER/$CB_NAME.log 2>&1
+
+. /appli/bioinfo/methyldackel/0.6.1/delenv.sh
