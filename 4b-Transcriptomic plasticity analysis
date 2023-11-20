@@ -1,0 +1,171 @@
+# This script was retrieved and adapted from @jleluyer Github
+#####################################################################################
+
+# Import packages
+library(dplyr)
+library(tidyverse)
+library(DESeq2)
+library(ggplot2)
+library(pheatmap)
+library(RColorBrewer)
+library(clusterProfiler)
+library(genefilter)
+library(apeglm)
+library(pcaExplorer)
+library(adegenet)
+library(ade4)
+library(MCMCglmm)
+library(cowplot)
+
+### 1 - Load raw counts into DESeq objects
+# Read in the sample sheet
+sampletable <- read.delim("Counts_Gastrula/design_DESeq2.gastrula.tsv", header=T, sep="\t")
+
+# Add the sample names as row names (it is needed for some of the DESeq functions)
+rownames(sampletable) <- sampletable$SampleName
+
+
+# Option where counts are one file per sample:
+# SampleTable is the sample sheet / metadata we created
+# Directory is the path to the directory where the counts are stored (one file per sample)
+# Design is how we wish to model the data: what we want to measure here is the difference between the treatment times
+star <- DESeqDataSetFromHTSeqCount(sampleTable = sampletable,
+                                   directory = "Counts_Gastrula",
+                                   design = ~ Condition + Pedigree + Condition:Pedigree)
+
+
+
+#------------------------------------------------------------------------------
+#### TEST FOR TRANSCRIPTOMIC PLASTICITY ####
+
+dds <- estimateSizeFactors(star)
+dds <- estimateDispersions(dds)
+
+# For test
+idx <- rowSums(counts(dds, normalized=TRUE) >= 10) >= 2 # Check use normalize ---- Don't understand this line...
+dds <- dds[idx,]
+
+rlogCOUNTS <- rlog(dds, blind=TRUE) #use blind=TRUE to not account for experimental design
+dat=as.data.frame(assay(rlogCOUNTS))
+
+# DAPC for gene expression -----
+degs10 <- rownames(dat)
+a.vsd <- dat[, grep("P1", colnames(dat))] # Control Pedigree
+a.vsd.exp <- dat[, grep("P2", colnames(dat))] # Exposed pedigree
+
+#######################Some genes have insufficient variance for DFA in data subsets!...find those genes using loop below
+dframe=(a.vsd[degs10,])
+for(col in rownames(dframe))
+{  min=min(dframe[col,])
+max=max(dframe[col,])
+if(min == max){print(col)}
+}
+col
+
+#If print out above, copy gene names below and run line to remove genes from analysis. 
+#degs9=degs10[! degs10 %in% c("xxxxx")]
+
+# DAPC -----
+pcp=prcomp(t(a.vsd[degs9,]), retx=TRUE, center=TRUE, scale. = TRUE)
+scores=pcp$x
+screeplot(pcp, bstick=T)
+
+# adegenet: finding clusters (even though we know what clusters we want) - choose 3 PCs and 2 groups
+clus=find.clusters(t(a.vsd[degs9,]),max.n.clus=2) #[degs10,]
+clus$grp
+clus$grp=c("Exposed", "Exposed", "Exposed", "Control", "Control", "Control") # Rename groups
+
+# now lets build a discriminant function for these two groups:
+dp=dapc(t(a.vsd[degs9,]), clus$grp, var.contrib=TRUE, n.pca=2) #[degs10,] # 2 PCs and 1 function
+scatter(dp, bg="white", scree.da=FALSE, legend=TRUE, solid=0.4, xlim = c(-2,2)) #discriminant function for ORIGIN type expression
+
+#Now, add in Exposed pedigree and see where they fall along continuum
+# On individuals from the Exposed pedigree
+pred.exp<-predict.dapc(dp, newdata=(t(a.vsd.exp[degs9,])))
+
+names(pred.exp)
+pred.exp$assign
+names(a.vsd.exp)
+pred.exp$ind.scores
+
+#must create another dataframe structure in order to plot these predicted values
+test<-dp
+test$ind.coord<-pred.exp$ind.scores
+test$posterior<-pred.exp$posterior
+test$assign<-pred.exp$assign
+
+test$grp=c("Exposed", "Exposed", "Exposed", "Control", "Control", "Control") # Rename groups
+
+scatter(test, bg="white", scree.da=FALSE,legend=TRUE,solid=.4, xlim = c(-20, 20))
+
+##retain DFA values for additional calculations
+dpc=data.frame(rbind(dp$ind.coord,pred.exp$ind.scores))
+
+
+# plot density plot
+data.merge<-merge(dpc,sampletable,by=0) # Here, lost the added sample, cause it is absent from the original sampletable.
+data.merge$Condition<-as.factor(data.merge$Condition)
+data.merge$Pedigree<-as.factor(data.merge$Pedigree)
+
+scale_custom <- list(
+  scale_fill_manual(values = c("lightblue","lightgreen","pink","cyan3"))
+)
+
+ggplot(data.merge, aes(x=LD1, fill=Treatment)) + 
+  geom_density(adjust=1, alpha=.7, linetype="dotted") +
+  facet_wrap(~Pedigree, scales="free_y") +
+  scale_x_continuous(limits = c(-5, 5)) +
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text.y = element_text(colour="black",size=12,face="plain"), 
+        axis.text.x = element_text(colour="black",size=12,face="plain")) +
+  labs(fill="Condition", 
+       x = "",
+       y = "") +
+    scale_fill_manual(values=c("lightblue", "lightgreen", "pink", "cyan3"))
+
+# Testing for significance of DFA differences - MCMCglmm -------
+cd=MCMCglmm(LD1~Pedigree+Pedigree:Condition,
+            data=data.merge,
+            nitt=75000, thin=25, burnin=5000) 
+
+head(cd) 
+summary.MCMCglmm(cd)
+
+## Exemple of output for Gastrula
+#Iterations = 5001:74976
+#Thinning interval  = 25
+#Sample size  = 2800 
+
+#DIC: 33.28946 
+
+#R-structure:  ~units
+
+#post.mean l-95% CI u-95% CI eff.samp
+#units    0.7761    0.189    1.686     2800
+
+#Location effects: LD1 ~ Pedigree + Pedigree:Condition 
+
+#post.mean l-95% CI u-95% CI eff.samp pMCMC
+#(Intercept)                  -0.4506  -1.5021   0.5055     3236 0.336
+#PedigreeExposed               0.5365  -0.9339   1.9634     2800 0.410
+#PedigreeControl:ConditionE    0.9041  -0.5795   2.2288     2800 0.183
+#PedigreeExposed:ConditionE   -0.3302  -1.6210   1.1846     3287 0.614
+
+
+# calculating difference in magnitudes of PedigreeControl:ConditionE and PedigreeExposed:ConditionE using sampled sets of parameters:
+awayDelta=abs(cd$Sol[,"PedigreeControl:ConditionE"])-abs(cd$Sol[,"PedigreeExposed:ConditionE"])
+mean(abs(cd$Sol[,"PedigreeControl:ConditionE"]))
+mean(abs(cd$Sol[,"PedigreeExposed:ConditionE"]))
+mean(abs(cd$Sol[,"PedigreeExposed"]))
+
+# 95% credible interval:
+HPDinterval(awayDelta)
+
+#MCMC p-value: ----- 
+if (is.na(table(awayDelta<0)[2])) {
+  cat("p <",signif(1/length(awayDelta),1))
+} else { cat("p =",signif(table(awayDelta<0)[2]/length(awayDelta), 2)) }
+
+
