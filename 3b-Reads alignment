@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+#PBS -N bwameth_Roslin_gastrula
+#PBS -q omp
+#PBS -l select=1:ncpus=16:mem=80gb
+#PBS -l walltime=15:00:00
+#PBS -J 1-12
+
+# Manage script history:
+CB_NAME=$(basename $PBS_JOBNAME)
+CB_LOG_FOLDER=$SCRATCH/"$CB_NAME"
+mkdir -p $CB_LOG_FOLDER
+
+# Set .log output in the same folder as the script:
+cd ${PBS_O_WORKDIR}
+
+# Load bwameth conda environment:
+. /appli/bioinfo/bwameth/0.2.3/env.sh
+
+# Define variables:
+# Path the the reference genome (contains also the index)
+REFERENCE=/home/datawork-lex/pesto/methylseq/3-bwameth/GCA_902806645.1_genomic.fna
+
+# Path to the trimmed .fastq files to be aligned:
+FQ1=$(ls /home/datawork-lex/pesto/methylseq/2-fastp/dna_Trimmed_fastq/gastrula/*_R1_*.gz | awk "NR==${PBS_ARRAY_INDEX}")
+FQ2=${FQ1/_R1/_R2}
+
+# Path to the folder containing the newly created .bam files (bwameth output):
+OUT=$CB_LOG_FOLDER/$(basename ${FQ1%_R1*}.bam)
+
+# Running bwameth.py:
+bwameth.py --threads 16 --reference $REFERENCE $FQ1 $FQ2 > $OUT 2> ${PBS_JOBNAME}.e${PBS_JOBID%.*}
+
+# Unload bwameth conda environment:
+. /appli/bioinfo/bwameth/0.2.3/delenv.sh
