@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#PBS -N fastqc
+#PBS -q omp
+#PBS -l mem=10G
+#PBS -l ncpus=10
+#PBS -l walltime=10:00:00
+#PBS -J 1-96
+
+. /appli/bioinfo/fastqc/0.11.9/env.sh
+
+cd ${PBS_O_WORKDIR}
+
+fastq=$(ls ../../0-data/*.gz | awk "NR==${PBS_ARRAY_INDEX}")
+
+fastqc -t ${NCPUS} --noextract ${fastq} -o . >& ${PBS_JOBNAME}.e${PBS_JOBID%.*} 2>&1
+
+. /appli/bioinfo/fastqc/0.11.9/delenv.sh
