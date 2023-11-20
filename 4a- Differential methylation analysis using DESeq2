@@ -1,0 +1,125 @@
+# Loading packages
+library(dplyr)
+library(tidyverse)
+library(DESeq2)
+library(ggplot2)
+library(pheatmap)
+library(pcaExplorer)
+
+
+
+############################################################
+### 1 - Load raw counts into DESeq objects
+############################################################
+
+# Read in the sample sheet
+sampletable <- read.table("design_DESeq2.tsv", header=T, sep="\t")
+
+# Add the sample names as row names (it is needed for some of the DESeq functions)
+rownames(sampletable) <- sampletable$SampleName
+View(sampletable)
+
+# Option where counts are one file per sample:
+# SampleTable is the sample sheet / metadata we created
+# Directory is the path to the directory where the counts are stored (one file per sample)
+# Design is how we wish to model the data: what we want to measure here is the difference between the treatment times
+Star <- DESeqDataSetFromHTSeqCount(sampleTable = sampletable,
+                                   directory = "Counts_Gastrula",
+                                   design = ~ Condition + Pedigree + Pedigree:Condition)
+
+
+############################################################
+### 2 - Counts normalization
+############################################################
+# Filter
+Star <- estimateSizeFactors(Star)
+Star <- estimateDispersions(Star)
+
+idx <- rowSums(counts(Star,normalized=TRUE) >= 10 ) >= 2  # check use normalize
+Star <- Star[idx,]
+
+# Counts normalization
+star_LRT <- DESeq(Star)
+vsd <- vst(star_LRT) # Normalizing counts by vst method
+
+
+
+############################################################
+### 3 - Visualization
+############################################################
+# Normalized counts visualization on PCA
+pcaData <- plotPCA(vsd, intgroup=c("Treatment"), returnData=TRUE, 1000) # Performing PCA using the 1000 more variable genes
+percentVar <- round(100 * attr(pcaData, "percentVar")) # Retrieving the per component variance information
+ggplot(pcaData, aes(PC1, PC2, color=Treatment)) + # Plotting the PCA
+  geom_point(size=4) +
+  scale_color_manual(values=c("lightblue", "lightgreen", "pink", "cyan3")) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  theme(axis.title = element_text(size=8),
+        legend.title = element_text(size=8)) +
+  labs(color="Condition") +
+  coord_fixed() +
+  theme(text=element_text(size=8)) +
+  theme_bw()
+
+############################################################
+### 3 - Differential expression analysis
+############################################################
+# Test for Pedigree (or F0 treatment) effect
+dds <- DESeq(star)
+resultsNames(dds)
+resPed<-results(dds, name="Pedigree_Exposed_vs_Control")
+
+# Retrieving genes differentially expressed between pedigrees
+Diff_Ped <- resPed %>% # This objet contains every genes influences by pedigree
+  data.frame() %>%
+  rownames_to_column(var="ID") %>%
+  arrange(padj) %>%
+  filter(padj<0.05,
+         abs(log2FoldChange) > 0.5) %>%
+  dplyr::select(ID, log2FoldChange)
+
+
+# Test for interaction between Pedigree (or F0 treatment) and F1 treatment
+starLRT <- DESeq(star, test="LRT", reduced=~ Condition + Pedigree)
+resultsNames(starLRT)
+resInter <- results(starLRT, name="ConditionE.PedigreeExposed")
+
+# Retrieving interacting genes
+res_Interact <- resInter %>% # This object contains every interacting genes.
+  as.data.frame() %>%
+  rownames_to_column(var="ID") %>%
+  as_tibble() %>%
+  arrange(padj) %>%
+  filter(padj < 0.1) %>%
+  dplyr::select(ID, log2FoldChange)
+
+
+############################################################
+### 4 - Heatmap visualization of the results
+############################################################
+b <- assay(vsd) %>% # Retrieving counts normalized by VST method
+  as.data.frame() %>% # transform into data frame object
+  rownames_to_column(var="ID") %>% # Rownames become a column
+  filter(ID %in% Diff_Ped$ID) %>% # Here, use the objet containing the ID of genes of interest (i.e. genes influenced by pedigree)
+  dplyr::select(ID, EE1, EE2, EE3, EC1, EC2, EC3, CE1, CE2, CE3, CC1, CC2, CC3)
+  
+rownames(b)=b$ID # Write IDs in rownames
+
+Matrix <- b %>%
+  dplyr::select(-ID)
+
+pheatmap((Matrix), # Modify parameters as convenience
+         cluster_cols=TRUE,
+         clustering_distance_rows = "correlation",
+         clustering_distance_cols = "euclidean",
+         cluster_rows=TRUE,
+         scale="row",
+         border_color = "grey",
+         cutree_rows = 2,
+         cutree_cols = 2,
+         drop_levels = TRUE,
+         legend=FALSE,
+         fontsize = 9,
+         cellwidth =20,
+         angle_col=0)
