@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#PBS -N star
+#PBS -q omp
+#PBS -l select=1:ncpus=28:mem=40gb
+#PBS -l walltime=08:00:00
+#PBS -J 1-48
+
+cd ${PBS_O_WORKDIR}
+
+. /appli/bioinfo/star/2.7.9a/env.sh
+
+idx=/home/ref-bioinfo/ifremer/sebimer/organism-banks/Crassostrea_gigas/ROSLIN_v1/star
+
+R1=$(ls ../0-data/*_R1_*.gz | awk "NR==${PBS_ARRAY_INDEX}")
+R2=${R1/_R1/_R2}
+out=$(basename ${R1%_R1*})
+
+STAR --runThreadN ${NCPUS} --genomeDir ${idx} --readFilesIn ${R1} ${R2} \
+     --readFilesCommand gunzip -c --alignIntronMin 20 --alignIntronMax 1000000 \
+     --outSAMtype BAM Unsorted --quantMode GeneCounts \
+     --outFileNamePrefix ${out} >& ${PBS_JOBNAME}.e${PBS_JOBID%.*} 2>&1
+
+. /appli/bioinfo/star/2.7.9a/delenv.sh
