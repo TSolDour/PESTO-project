@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#PBS -l mem=55G
+#PBS -q omp
+#PBS -l ncpus=15
+#PBS -l walltime=20:00:00
+#PBS -j oe
+
+
+# Manage script history
+CB_NAME=$(basename $PBS_JOBNAME)
+CB_TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+CB_LOG_FOLDER=$SCRATCH/"$CB_TIMESTAMP"_"$CB_NAME"
+mkdir -p $CB_LOG_FOLDER
+cp $0 $CB_LOG_FOLDER/$CB_NAME
+
+# Load environment fastp conda environment:
+. /appli/bioinfo/fastp/0.20.1/env.sh
+
+# Put here the raw fastq file to handle (your file)
+FILE1="/home1/datawork/tsoldour/PESTO_methylseq/raw-Data/*FE1_R1.fastq.gz"
+FILE2="/home1/datawork/tsoldour/PESTO_methylseq/raw-Data/*FE1_R2.fastq.gz"
+
+# Put here the resulting file (will be created by fastp)
+RESFILE1=$CB_LOG_FOLDER/FE1_R1_trimmed.fastq.gz
+RESFILE2=$CB_LOG_FOLDER/FE1_R2_trimmed.fastq.gz
+
+# Executing fastp 
+fastp --thread 15 -i $FILE1 -o $RESFILE1 -I $FILE2 -O $RESFILE2 --detect_adapter_for_pe --length_required 125 > $CB_LOG_FOLDER/$CB_NAME.log 2>&1
+
+# Unload environment fastp conda environment:
+. /appli/bioinfo/fastp/0.20.1/delenv.sh
