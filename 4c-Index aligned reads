@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#PBS -N SamToolsSort_Roslin_G
+#PBS -q omp
+#PBS -l select=1:ncpus=10:mem=50gb
+#PBS -l walltime=10:00:00
+#PBS -J 1-12
+
+# Manage script history:
+CB_NAME=$(basename $PBS_JOBNAME)
+CB_LOG_FOLDER=$SCRATCH/"$CB_NAME"
+mkdir -p $CB_LOG_FOLDER
+
+# Set .log output in the same folder as the script folder:
+cd ${PBS_O_WORKDIR}
+
+# Load samtools (Danecek et al., 2021) conda environment:
+. /appli/bioinfo/samtools/1.9/env.sh
+
+# Path to the aligned.bam read files:
+INBAM=$(ls /home1/scratch/tsoldour/bwameth_Roslin_gastrula/*.bam | awk "NR==${PBS_ARRAY_INDEX}")
+
+# Path to the output folder:
+OUT=$CB_LOG_FOLDER/$(basename ${INBAM%.bam}_sort.bam)
+
+# Running samtools sort:
+samtools sort -@ ${NCPUS} -l 1 -o ${OUT} -O bam ${INBAM} > $CB_LOG_FOLDER/$CB_NAME.log 2>&1
+
+# Unload samtools conda environment:
+. /appli/bioinfo/samtools/1.9/delenv.sh
