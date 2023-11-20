@@ -1,0 +1,120 @@
+# This script was used to perform likelihood ratio test on F1 PESTO methylseq data
+# in order to test for interaction between F0 and F1 treatment.
+
+
+library(tidyr)
+library(readr)
+library(dplyr)
+library(pheatmap)
+library(aod) # To perform wald.test
+library(ggplot2)
+library(lmtest)
+library(multtest)
+
+
+Tile <- read.delim("Gastrula/Tile_Unite_G_all.txt", header=TRUE, sep="\t")
+
+Met <- Tile %>%
+  rename(strand_TT1 = strand,
+         coverage_TT1 = coverage1,
+         numCs_TT1 = numCs1,
+         numTs_TT1 = numTs1,
+         coverage_TT2 = coverage2,
+         numCs_TT2 = numCs2,
+         numTs_TT2 = numTs2,
+         coverage_TT3 = coverage3,
+         numCs_TT3 = numCs3,
+         numTs_TT3 = numTs3,
+         coverage_TE1 = coverage4,
+         numCs_TE1 = numCs4,
+         numTs_TE1 = numTs4,
+         coverage_TE2 = coverage5,
+         numCs_TE2 = numCs5,
+         numTs_TE2 = numTs5,
+         coverage_TE3 = coverage6,
+         numCs_TE3 = numCs6,
+         numTs_TE3 = numTs6,
+         coverage_ET1 = coverage7,
+         numCs_ET1 = numCs7,
+         numTs_ET1 = numTs7,
+         coverage_ET2 = coverage8,
+         numCs_ET2 = numCs8,
+         numTs_ET2 = numTs8,
+         coverage_ET3 = coverage9,
+         numCs_ET3 = numCs9,
+         numTs_ET3 = numTs9,
+         coverage_EE1 = coverage10,
+         numCs_EE1 = numCs10,
+         numTs_EE1 = numTs10,
+         coverage_EE2 = coverage11,
+         numCs_EE2 = numCs11,
+         numTs_EE2 = numTs11,
+         coverage_EE3 = coverage12,
+         numCs_EE3 = numCs12,
+         numTs_EE3 = numTs12) %>%
+  mutate(TT1 = ((numCs_TT1*100)/coverage_TT1),
+         TT2 = ((numCs_TT2*100)/coverage_TT2),
+         TT3 = ((numCs_TT3*100)/coverage_TT3),
+         TE1 = ((numCs_TE1*100)/coverage_TE1),
+         TE2 = ((numCs_TE2*100)/coverage_TE2),
+         TE3 = ((numCs_TE3*100)/coverage_TE3),
+         ET1 = ((numCs_ET1*100)/coverage_ET1),
+         ET2 = ((numCs_ET2*100)/coverage_ET2),
+         ET3 = ((numCs_ET3*100)/coverage_ET3),
+         EE1 = ((numCs_EE1*100)/coverage_EE1),
+         EE2 = ((numCs_EE2*100)/coverage_EE2),
+         EE3 = ((numCs_EE3*100)/coverage_EE3)) %>%
+  unite(col = "Region", chr:end, sep ="_") %>%
+  select(Region, TT1, TT2, TT3, TE1, TE2, TE3, ET1, ET2, ET3, EE1, EE2, EE3)
+
+  Methylation <- Met %>%
+  pivot_longer(!Region,names_to = "Sample", values_to = "Methylation") %>%
+  pivot_wider(names_from = Region, values_from = Methylation) %>%
+  mutate(Treatment = c("C", "C", "C", "E", "E", "E", "C", "C", "C", "E", "E", "E"),
+         Pedigree = c("Control", "Control", "Control", "Control", "Control", "Control", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed"),
+         Condition = c("CC", "CC", "CC", "CE", "CE", "CE", "EC", "EC", "EC", "EE", "EE", "EE"))
+
+
+Final <- Methylation %>%
+  select(1,96375, 96376, 96377, 2:96374)
+
+# Test for interaction only:
+# On the first variable only:
+fullmodel <- lm(CADCXH010000001.1_14001_14500 ~ Treatment + Pedigree + Treatment:Pedigree, data = Final)
+reducedmodel <- lm(CADCXH010000001.1_14001_14500 ~ Treatment + Pedigree, data = Final)
+
+lrtest(fullmodel,reducedmodel)
+
+
+#Now, perform this test on all the variables:
+
+res <- aov(CADCXH010000001.1_14001_14500 ~ Pedigree*Treatment, data=Final)
+summary(res)
+
+monlrt <- function(variable, facteurs, reducedFacteurs) {
+  myX <- variable
+  A <- as.formula(paste("myX", "~", facteurs, sep=""))
+  B <- as.formula(paste("myX", "~", reducedFacteurs, sep=""))
+  model <- lm(A, na.action=na.omit)
+  reducedmodel <- lm(B, na.action = na.omit)
+  modele <- lrtest(model, reducedmodel)
+  return(modele[,5])
+}
+
+result=apply(Final[5:96377], MARGIN=2, FUN=monlrt, facteurs="Final$Pedigree+Final$Treatment+Final$Pedigree:Final$Treatment", reducedFacteurs="Final$Pedigree+Final$Treatment")
+result <- result[2,]
+result <- t(as.data.frame(result))
+
+index <- as.data.frame(colnames(result)) %>%
+  rownames_to_column(var="Idx")
+
+LRT.adj <- mt.rawp2adjp(result,"BH")
+pval.adj <- as.data.frame(LRT.adj$adjp[order(LRT.adj$index),])
+rownames(pval.adj)=index$`colnames(result)`
+colnames(pval.adj)=c("pval_Interaction", "BH_Interaction")
+pval.adj <- pval.adj %>%
+  tibble::rownames_to_column(var="Region")
+
+# This object contains DMR with interacting pattern
+Interacting_DMR <- pval.adj %>%
+  filter(BH_Interaction < 0.05)
