@@ -1,0 +1,34 @@
+# For more information about how to format dataset: http://www.sthda.com/english/wiki/survival-analysis-basics"
+
+library("survival")
+library("survminer")
+library("Rcpp")
+library(readr)
+library(tidyr)
+library(dplyr)
+# Importing dataset
+survie <- read.delim("Estran_F1_2023.txt")
+
+# Modeling the survival curve
+fit <- survfit(Surv(Jours, Status) ~ Condition, data = survie)
+summary(fit)$table
+
+# Testing for differential survival between conditions
+survdiff <- pairwise_survdiff(Surv(Jours, Status) ~ Condition, data = survie)
+
+# Plot the model
+ggsurv <- ggsurvplot(fit,
+           pval = FALSE, conf.int = TRUE,
+           xlab = "Time in days",
+           ylab = "Survival rate",
+           legend.labs = c("CC", "CE", "EC", "EE"),
+           ggtheme = theme_bw(), # Change ggplot2 theme
+           palette = c("lightblue", "lightgreen", "pink", "cyan3"))
+Plot <- ggsurv$plot + theme_bw() +
+  theme(axis.text=element_text(size=9),
+        axis.title=element_text(size=10),
+        legend.text=element_text(size=9),
+        legend.title = element_text(size=10),
+        legend.position="none")
+
+Plot
