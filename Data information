@@ -1,0 +1,5 @@
+The methylseq data were obtained from gastrula embryos (6 hours post-fertilization)
+and metamorphosis-competent pediveliger larvae (19 or 16 days post-fertilization depending on the generation concerned).
+
+Genomic DNA was extracted using the E.Z.N.A. (R) Mollusk DNA kit by Omega Bio-Tek. Quality controlled DNA unerwent
+a NEBNext Enzymatic conversion before to be sequenced (150bp PE reads) on an Illumina Novaseq 6000 plateform.
