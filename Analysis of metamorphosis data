@@ -1,0 +1,80 @@
+#Loading some packages :
+library("ggplot2")
+library("dplyr")
+library("tidyr")
+library("readr")
+library("readxl")
+library("carData")
+library("car")
+library("tidyverse")
+library("DescTools")
+library("skimr")
+library("generics")
+library(Rmisc)
+library("performance")
+
+
+##########################################################################
+# 1 - Data import and sort
+##########################################################################
+
+#Loading and formating dataset:
+Test <- read_delim("Test_epinephrine_F1.csv", 
+                               ";", escape_double = FALSE, col_types = cols(Sample = col_factor(levels = c("CC1", 
+                               "CC2", "CC3", "CE1", "CE2", "CE3", "EC1", "EC2", "EC3", "EE1", "EE2", "EE3")),
+                               Pedigree = col_factor(levels = c("Control", "Exposed")),
+                               Treatment = col_factor(levels = c("C","E")),
+                               Condition = col_factor(levels = c("CC", "CE", "EC", "EE"))),
+                               locale = locale(decimal_mark = ","), 
+                               trim_ws = TRUE)
+
+Sorting data by conditions:
+Test_tidy <- Test %>%
+  group_by(Condition, Pedigree, Treatment)
+
+##########################################################################
+# 2 - Data analisys
+##########################################################################
+# 2-way anova not on percentage but on angular transformed data
+res <- aov(Metamorphosis~Treatment*Pedigree, data=Test_tidy)
+
+#Check assumptions on residues
+check_normality(res)
+check_heteroscedasticity(res)
+
+# Summarise anova results
+anova(res) # significant effect of Treatment and Pedigree variables, no interaction
+
+# Perform post-hoc test
+PH <- PostHocTest(res, method = "newmankeuls",conf.level=NA) 
+PH
+
+##########################################################################
+# 3 - Data visualization
+##########################################################################
+# Barplot representation:
+# To do so, we need to calculate descriptive statistics on percentages
+
+Resume1 <- summarySE(Test_tidy,measurevar="Percentage",groupvars=c("Pedigree"))
+
+# Representation of the significant test results
+ann_textA <- data.frame(Condition=c("CC"), Pedigree=c("Control"), Percentage=60, lab="Aa")
+ann_textB <- data.frame(Condition=c("CE"), Pedigree=c("Exposed"), Percentage=52, lab="Ab")
+ann_textC <- data.frame(Condition=c("EC"), Pedigree=c("Control"), Percentage=47, lab="Ba")
+ann_textD <- data.frame(Condition=c("EE"), Pedigree=c("Exposed"), Percentage=42, lab="Bb")
+
+Resume1 %>%
+  ggplot(aes(x=Condition, y=Percentage, fill = Condition)) +
+  geom_col(position="dodge", width=0.5, alpha=0.5) +
+  geom_errorbar(aes(x=Condition, ymax=Percentage+ci, ymin=Percentage-ci), width=0.2) +
+  geom_text(data=ann_textA, label="Aa", size=4) +
+  geom_text(data=ann_textB, label="Ab", size=4) +
+  geom_text(data=ann_textC, label="Ba", size=4) +
+  geom_text(data=ann_textD, label="Bb", size=4) +
+  theme_bw() +
+  theme(axis.text=element_text(size=8),
+        legend.position = "none") +
+  labs(x="",
+       y="Metamorphosis (%)") +
+  scale_fill_manual(values=c("lightblue", "lightgreen", "pink", "cyan3"))
+
