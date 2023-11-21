@@ -1,0 +1,5 @@
+The RNAseq data were obtained from gastrula embryos (6 hours post-fertilization)
+and metamorphosis-competent pediveliger larvae (19 or 16 days post-fertilization depending on the generation concerned).
+
+RNA was extracted using a trizol-chloroform protocol and, after quality and purity check,
+was sequenced (RNAseq 150bp PE reads) on an Illumina NovaSeq plateform.
